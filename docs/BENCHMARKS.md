@@ -14,6 +14,18 @@ Each round produced 224,656 bytes of evidence including its manifest. These file
 
 `python benchmarks/ablation.py` is the separate executable privacy/identity/causality contrast, not a timing comparison. All eight checks were true: the constant-identity signature baseline accepted the wrong recipient, the signature-only baseline accepted the removed edge, and the real replay engine rejected each corresponding regression.
 
+## Privacy-composition correction measurement
+
+After the independent privacy repair, the same command was executed at code commit `ee9ab608810aef11c48a69ddff93d419977a3ba5` using a fresh noneditable 0.1.1 wheel on the same Python/OS, 500 calls × 5 rounds. [All raw samples](../benchmarks/composition-results.json) are retained separately from the historical results above.
+
+| Operation | Median per 500-call round |
+|---|---:|
+| Record, seal and verify | 5,331.658 ms |
+| Verify existing evidence | 2,692.287 ms |
+| Replay, including initial verify | 3,050.968 ms |
+
+Evidence size remained 224,656 bytes in each round. The substantial sample variation, including verification timings where the verifier code did not change, means these separate runs cannot isolate the repair's incremental overhead. No faster-than-before or incumbent-performance claim is made. The ordinary CRM timing workload does not benchmark every stricter-policy composition; `python benchmarks/privacy_composition_probe.py` and `python examples/composition.py` are separate correctness workflows.
+
 ## Buyer and workflow
 
 Hypothesis: an agent platform or customer-support engineering team needs to hand a reproducer from incident triage to a developer/CI runner without copying customer identities or invoking production write tools. Today, teams can already combine VCR-style stubs, trace masking and custom test code; this package reduces the integration surface for one narrow workflow and makes first divergence and independent evidence verification explicit.

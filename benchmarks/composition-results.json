@@ -1,0 +1,45 @@
+{
+  "python": "3.14.3",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "calls_per_round": 500,
+  "rounds": 5,
+  "median_ms": {
+    "record_and_seal_ms": 5331.658,
+    "verify_ms": 2692.287,
+    "replay_with_verify_ms": 3050.968
+  },
+  "samples_ms": {
+    "record_and_seal_ms": [
+      5875.239,
+      3433.215,
+      3938.654,
+      5331.658,
+      7158.902
+    ],
+    "verify_ms": [
+      1756.69,
+      1844.657,
+      2692.287,
+      3133.347,
+      3689.711
+    ],
+    "replay_with_verify_ms": [
+      1816.421,
+      1960.813,
+      3091.474,
+      3050.968,
+      3764.923
+    ]
+  },
+  "evidence_bytes": [
+    224656,
+    224656,
+    224656,
+    224656,
+    224656
+  ],
+  "workload": "synthetic small JSON CRM tool; zero network",
+  "measurement_date": "2026-10-03",
+  "source_commit": "ee9ab608810aef11c48a69ddff93d419977a3ba5",
+  "installation": "fresh .venv-composition, non-editable wheel from python -m pip install --no-cache-dir ."
+}
