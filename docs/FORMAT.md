@@ -4,7 +4,7 @@
 
 `Replay(path, policy, expected_root=None)` validates the whole directory before returning recorded values. The policy and private key must match. The same `call` shape is accepted but `invoke` is unused. Replay outputs include private Python string subclasses for pseudonym provenance; ordinary user strings resembling tokens are re-tokenized instead of being trusted. `finish()` enforces complete consumption. Context exit calls it after a normally completed workflow.
 
-Each event contains exactly `id`, `tool`, `arguments`, `signature`, `depends_on`, `outcome`. IDs are `e000001` onwards. Dependencies are sorted unique earlier event IDs. Call signatures hash canonical `{tool, arguments}` after redaction. Outcomes contain either `{kind: return, value}` or `{kind: error, type, message}`.
+Each event contains exactly `id`, `tool`, `arguments`, `signature`, `depends_on`, `outcome`. IDs are `e000001` onwards. Dependencies are sorted unique earlier event IDs. Call signatures hash canonical `{tool, arguments}` after redaction. Outcomes contain either `{kind: return, value}` or `{kind: error, type, message}`. Error messages are whole-message HMAC pseudonyms; error types are a fixed built-in allowlist or `ToolError`, preventing arbitrary exception metadata from bypassing redaction.
 
 Objects are stored at `objects/<sha256>.json`. `manifest.json` has exactly `format`, `policy_id`, `key_id`, `events` (ordered object digests), and `root`. The root hashes the other manifest fields. Policy ID hashes the redaction configuration; key ID is a domain-separated HMAC, never the key itself.
 

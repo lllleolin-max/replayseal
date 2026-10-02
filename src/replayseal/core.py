@@ -15,6 +15,10 @@ from . import integrity
 from .integrity import canonical, digest, verify, IntegrityError, TOOL
 from .privacy import Policy, PrivacyError
 
+SAFE_ERROR_TYPES = (ValueError, TypeError, RuntimeError, OSError, KeyError, IndexError,
+                    LookupError, TimeoutError, ConnectionError, PermissionError,
+                    FileNotFoundError, AssertionError, ZeroDivisionError)
+
 
 class ReplayMismatch(AssertionError):
     """The next operation does not match the recorded contract."""
@@ -91,7 +95,7 @@ class Recorder(_Boundary):
             except Exception as exc:
                 if self.failed:
                     raise
-                event["outcome"] = {"kind": "error", "type": type(exc).__name__,
+                event["outcome"] = {"kind": "error", "type": type(exc).__name__ if type(exc) in SAFE_ERROR_TYPES else "ToolError",
                                     "message": self.policy.redact(str(exc), root="error")}
                 self.events.append(event)
                 self._seen.add(event["id"])

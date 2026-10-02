@@ -24,7 +24,7 @@ class PrivacyError(ValueError):
 
 
 class _Pseudonym(str):
-    """Replay-issued value; ordinary matching-looking strings remain untrusted."""
+    """Replay-issued sanitized text; ordinary token-looking strings remain untrusted."""
     def __new__(cls, value: str, key_id: str):
         obj = super().__new__(cls, value)
         obj.key_id = key_id
@@ -66,7 +66,7 @@ class Policy:
 
     @property
     def policy_id(self) -> str:
-        return digest({"version": 1, "fields": list(self.fields), "paths": list(self.paths),
+        return digest({"version": 2, "fields": list(self.fields), "paths": list(self.paths),
                        "patterns": list(self.patterns)})
 
     def _token(self, value: object) -> str:
@@ -74,11 +74,31 @@ class Policy:
         return f"~rs1:{mac}~"
 
     def _text(self, value: str) -> str:
-        # Reserve the token namespace: user-supplied lookalikes cannot impersonate a replay value.
-        value = TOKEN.sub(lambda match: self._token(match.group()), value)
-        for pattern in self.patterns:
-            value = re.sub(pattern, lambda match: self._token(match.group()), value)
-        return value
+        if isinstance(value, _Pseudonym):
+            if value.key_id != self.key_id:
+                raise PrivacyError("pseudonym belongs to a different key")
+            return str(value)
+        # Find every span on the ORIGINAL source. Union overlaps before replacing,
+        # so a short earlier rule cannot hide a larger match from a later rule.
+        spans = []
+        for expression in (TOKEN, *(re.compile(pattern) for pattern in self.patterns)):
+            for match in expression.finditer(value):
+                start, end = match.span()
+                if start == end:
+                    raise PrivacyError("redaction expressions must not match empty spans")
+                spans.append((start, end))
+        merged = []
+        for start, end in sorted(spans):
+            if merged and start < merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        pieces, cursor = [], 0
+        for start, end in merged:
+            pieces.extend((value[cursor:start], self._token(value[start:end])))
+            cursor = end
+        pieces.append(value[cursor:])
+        return "".join(pieces)
 
     def _path_matches(self, path: tuple[str, ...]) -> bool:
         for pattern in self.paths:
@@ -107,7 +127,7 @@ class Policy:
             if type(item) is dict:
                 result = {}
                 for name, child in item.items():
-                    if type(name) is not str:
+                    if type(name) is not str and not isinstance(name, _Pseudonym):
                         raise PrivacyError("JSON object keys must be strings")
                     safe_name = self._text(name)
                     if safe_name in result:
@@ -118,7 +138,9 @@ class Policy:
             return item
 
         try:
-            result = visit(value, (root,))
+            # Arbitrary exception messages often interpolate otherwise protected
+            # field values. Opaque whole-message tokens avoid an error-channel leak.
+            result = visit(value, (root,), sensitive=root == "error")
             canonical(result)
             return result
         except IntegrityError as exc:
@@ -126,10 +148,10 @@ class Policy:
 
     def restore(self, value: object) -> object:
         """Restore token provenance in a previously verified sanitized output."""
-        if type(value) is str and TOKEN.fullmatch(value):
+        if type(value) is str and TOKEN.search(value):
             return _Pseudonym(value, self.key_id)
         if type(value) is list:
             return [self.restore(child) for child in value]
         if type(value) is dict:
-            return {key: self.restore(child) for key, child in value.items()}
+            return {self.restore(key): self.restore(child) for key, child in value.items()}
         return value

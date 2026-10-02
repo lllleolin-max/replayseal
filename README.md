@@ -65,7 +65,7 @@ policy = Policy(private_key,
     patterns=(*DEFAULT_PATTERNS, r"\bSSN:\d{3}-\d{2}-\d{4}\b"))
 ```
 
-Paths are JSON Pointers rooted at `arguments`, `result` or `error`; `*` matches one path segment. Exact field matching ignores case, spaces, underscores and hyphens. Array indices can be matched by a number or `*`. Matching fields hide the entire value, including its structure. Regexes match strings, including dictionary keys; they are caller-trusted configuration. Unconfigured sensitive information can remain visible. **This is configurable pseudonymization, not a universal PII detector, anonymization certificate or legal compliance claim.**
+Paths are JSON Pointers rooted at `arguments` or `result`; `*` matches one path segment. Exact field matching ignores case, spaces, underscores and hyphens. Array indices can be matched by a number or `*`. Matching fields hide the entire value, including its structure. Regexes match original strings, including dictionary keys; overlapping matches are merged before replacement. Exception messages always become opaque whole-message pseudonyms, and custom exception class names become `ToolError`. Rules are caller-trusted configuration. Unconfigured sensitive information can remain visible. **This is configurable pseudonymization, not a universal PII detector, anonymization certificate or legal compliance claim.**
 
 ## Inspect and share evidence
 
