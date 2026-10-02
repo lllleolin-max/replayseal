@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import functools
+import copy
 import inspect
 import json
 import os
@@ -40,6 +41,15 @@ def _dependencies(values, seen: set[str]) -> list[str]:
 
 
 class _Boundary:
+    @property
+    def events(self) -> list[dict]:
+        """Inspection snapshot; edits cannot bypass capture or verified replay state."""
+        return copy.deepcopy(self._events)
+
+    @property
+    def policy(self) -> Policy:
+        return self._policy
+
     def tool(self, name: str | None = None):
         """Decorate synchronous JSON tools; bind defaults for stable signatures."""
         def decorate(function):
@@ -60,8 +70,8 @@ class _Boundary:
 class Recorder(_Boundary):
     """Record one synchronous run; persist only sanitized event objects on seal."""
     def __init__(self, path: str | Path, policy: Policy):
-        self.path, self.policy = Path(path), policy
-        self.events: list[dict] = []
+        self.path, self._policy = Path(path), policy
+        self._events: list[dict] = []
         self.closed = False
         self.failed = False
         self._busy = False
@@ -71,7 +81,13 @@ class Recorder(_Boundary):
 
     @property
     def last_id(self) -> str | None:
-        return self.events[-1]["id"] if self.events else None
+        return self._events[-1]["id"] if self._events else None
+
+    def _append(self, event: dict):
+        if len(canonical(event)) > integrity.MAX_FILE_BYTES:
+            raise IntegrityError("event exceeds file size limit")
+        self._events.append(event)
+        self._seen.add(event["id"])
 
     def call(self, tool: str, arguments: dict, invoke, *, depends_on=()):
         if self.closed or self.failed:
@@ -83,9 +99,13 @@ class Recorder(_Boundary):
             raise ValueError("tool name must be a static identifier")
         if type(arguments) is not dict:
             raise TypeError("tool arguments must be an object")
+        if len(self._events) >= integrity.MAX_EVENTS:
+            raise ValueError("recording exceeds event count limit")
         deps = _dependencies(depends_on, self._seen)
         safe_args = self.policy.redact(arguments, root="arguments")
-        event = {"id": f"e{len(self.events) + 1:06d}", "tool": tool, "arguments": safe_args,
+        if type(safe_args) is not dict or len(canonical(safe_args)) > integrity.MAX_FILE_BYTES:
+            raise PrivacyError("sanitized arguments must be an object within the size limit")
+        event = {"id": f"e{len(self._events) + 1:06d}", "tool": tool, "arguments": safe_args,
                  "signature": digest({"tool": tool, "arguments": safe_args}), "depends_on": deps}
         self._busy = True
         completed = False
@@ -97,15 +117,13 @@ class Recorder(_Boundary):
                     raise
                 event["outcome"] = {"kind": "error", "type": type(exc).__name__ if type(exc) in SAFE_ERROR_TYPES else "ToolError",
                                     "message": self.policy.redact(str(exc), root="error")}
-                self.events.append(event)
-                self._seen.add(event["id"])
+                self._append(event)
                 completed = True
                 raise
             if self.failed:
                 raise RuntimeError("recorder failed during invocation")
             event["outcome"] = {"kind": "return", "value": self.policy.redact(result, root="result")}
-            self.events.append(event)
-            self._seen.add(event["id"])
+            self._append(event)
             completed = True
             return result
         finally:
@@ -125,7 +143,7 @@ class Recorder(_Boundary):
         try:
             (stage / "objects").mkdir()
             refs = []
-            for event in self.events:
+            for event in self._events:
                 ref = digest(event)
                 (stage / "objects" / (ref + ".json")).write_bytes(canonical(event))
                 refs.append(ref)
@@ -158,13 +176,13 @@ class Replay(_Boundary):
         manifest = evidence["manifest"]
         if manifest["key_id"] != policy.key_id or manifest["policy_id"] != policy.policy_id:
             raise ReplayMismatch("replay requires the recording policy and pseudonym key")
-        self.events, self.policy = evidence["events"], policy
+        self._events, self._policy = evidence["events"], policy
         self.position, self.failed, self.closed = 0, False, False
         self._seen: set[str] = set()
 
     @property
     def last_id(self) -> str | None:
-        return self.events[self.position - 1]["id"] if self.position else None
+        return self._events[self.position - 1]["id"] if self.position else None
 
     def _mismatch(self, reason: str):
         self.failed = True
@@ -173,9 +191,9 @@ class Replay(_Boundary):
     def call(self, tool: str, arguments: dict, invoke=None, *, depends_on=()):
         if self.failed or self.closed:
             raise ReplayMismatch("replay is closed or failed")
-        if self.position >= len(self.events):
+        if self.position >= len(self._events):
             self._mismatch("unexpected call after end of recording")
-        expected = self.events[self.position]
+        expected = self._events[self.position]
         index = self.position + 1
         if tool != expected["tool"]:
             self._mismatch(f"event {index}: tool differs")
@@ -203,8 +221,8 @@ class Replay(_Boundary):
     def finish(self):
         if self.failed:
             raise ReplayMismatch("replay failed previously")
-        if self.position != len(self.events):
-            self._mismatch(f"replay ended early: {len(self.events) - self.position} unconsumed events")
+        if self.position != len(self._events):
+            self._mismatch(f"replay ended early: {len(self._events) - self.position} unconsumed events")
         self.closed = True
 
     def __enter__(self):
@@ -235,7 +253,7 @@ def _difference(left, right, path="$"):
                 return found
         if len(left) != len(right):
             return path, "list length changed"
-    elif left != right:
+    elif canonical(left) != canonical(right):
         return path, "value changed"
     return None
 

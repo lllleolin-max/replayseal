@@ -8,9 +8,14 @@ from pathlib import Path
 
 FORMAT = "replayseal/v1"
 MAX_FILE_BYTES = 16 * 1024 * 1024
+MAX_TOTAL_BYTES = 64 * 1024 * 1024
 MAX_EVENTS = 100_000
 HEX = re.compile(r"^[0-9a-f]{64}$")
 TOOL = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,127}$")
+ERROR_NAMES = {"ValueError", "TypeError", "RuntimeError", "OSError", "KeyError", "IndexError",
+               "LookupError", "TimeoutError", "ConnectionError", "PermissionError",
+               "FileNotFoundError", "AssertionError", "ZeroDivisionError", "ToolError"}
+PSEUDONYM = re.compile(r"^~rs1:[0-9a-f]{64}~$")
 
 
 class IntegrityError(ValueError):
@@ -58,14 +63,17 @@ def _pairs(pairs: list[tuple[str, object]]) -> dict:
     return result
 
 
-def read_json(path: Path) -> object:
+def read_json(path: Path, *, budget: list[int] | None = None) -> object:
     if path.is_symlink():
         raise IntegrityError("symlinked evidence is not accepted")
     try:
+        limit = min(MAX_FILE_BYTES, budget[0]) if budget is not None else MAX_FILE_BYTES
         with path.open("rb") as stream:
-            data = stream.read(MAX_FILE_BYTES + 1)
-        if len(data) > MAX_FILE_BYTES:
-            raise IntegrityError("evidence file exceeds size limit")
+            data = stream.read(limit + 1)
+        if len(data) > limit:
+            raise IntegrityError("evidence exceeds file or total size limit")
+        if budget is not None:
+            budget[0] -= len(data)
         result = json.loads(data, object_pairs_hook=_pairs)
         canonical(result)
         return result
@@ -83,7 +91,11 @@ def _keys(value: object, names: set[str]) -> None:
 def verify(path: str | Path, expected_root: str | None = None) -> dict:
     """Return validated manifest/events. expected_root must come from a trusted channel."""
     folder = Path(path)
-    manifest = read_json(folder / "manifest.json")
+    for directory in (folder, folder / "objects"):
+        if directory.is_symlink() or getattr(directory, "is_junction", lambda: False)():
+            raise IntegrityError("linked evidence directories are not accepted")
+    budget = [MAX_TOTAL_BYTES]
+    manifest = read_json(folder / "manifest.json", budget=budget)
     _keys(manifest, {"format", "policy_id", "key_id", "events", "root"})
     if manifest["format"] != FORMAT:
         raise IntegrityError("unsupported evidence format")
@@ -102,7 +114,7 @@ def verify(path: str | Path, expected_root: str | None = None) -> dict:
     for index, ref in enumerate(refs, 1):
         if type(ref) is not str or not HEX.fullmatch(ref):
             raise IntegrityError("invalid event content address")
-        event = read_json(folder / "objects" / (ref + ".json"))
+        event = read_json(folder / "objects" / (ref + ".json"), budget=budget)
         if digest(event) != ref:
             raise IntegrityError(f"event {index} content hash mismatch")
         _keys(event, {"id", "tool", "arguments", "signature", "depends_on", "outcome"})
@@ -123,6 +135,11 @@ def verify(path: str | Path, expected_root: str | None = None) -> dict:
         if type(outcome) is not dict or outcome.get("kind") not in ("return", "error"):
             raise IntegrityError("invalid outcome")
         _keys(outcome, {"kind", "value"} if outcome["kind"] == "return" else {"kind", "type", "message"})
+        if outcome["kind"] == "error":
+            if type(outcome["type"]) is not str or outcome["type"] not in ERROR_NAMES:
+                raise IntegrityError("invalid error type label")
+            if type(outcome["message"]) is not str or not PSEUDONYM.fullmatch(outcome["message"]):
+                raise IntegrityError("error messages must be opaque pseudonyms")
         seen.add(event["id"])
         events.append(event)
     return {"manifest": manifest, "events": events}
