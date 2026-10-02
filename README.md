@@ -26,6 +26,16 @@ python benchmarks/ablation.py
 
 The synthetic example records a CRM lookup and invoice notification, replays them with zero live tool calls, and catches a regression that routes the invoice to a different customer. The output directory must be new: evidence is never silently overwritten. The published example keys and customer records are deliberately synthetic.
 
+The example also emits `demo-output/incident.plan.json`. Run its data-only call contract through the CLI with the **public synthetic demo key**:
+
+```powershell
+# PowerShell; this published key is for synthetic demo records only.
+$env:REPLAYSEAL_KEY = '7075626c69632d64656d6f2d6f6e6c792d7265706c6163652d6d652d303030303030'
+python -m replayseal replay demo-output/incident demo-output/incident.plan.json
+```
+
+On POSIX shells use `export REPLAYSEAL_KEY=...` with the same demo hex value. Expected summary: `{"events": 2, "live_calls": 0, "recorded_errors": 0, "replayed": true}`. The plan passes the recorded lookup's customer and invoice into the next call using JSON Pointer result references; it never imports or executes tool implementations. Use SDK replay to exercise actual orchestration branches. Real keys come from your secret provisioning system, never from a published fixture.
+
 ## Wrap a tool boundary
 
 ```python
@@ -79,6 +89,8 @@ python verify_bundle.py . --expected-root TRUSTED_ROOT_HEX
 
 Verification checks content hashes, schema, signatures, contiguous event order and earlier-only causal references. `diff` reports the first event and JSON path that changed, without displaying the differing values. It refuses to treat different keys/policies as meaningful behavioral comparisons. CLI exit codes: **0** success/equal, **1** regression/difference, **2** invalid input or operation failure.
 
+`replay TRACE PLAN --expected-root TRUSTED_ROOT_HEX` checks a complete ordered JSON plan, reading its hex key from `REPLAYSEAL_KEY`. `--key-env NAME` selects another variable and `--policy policy.json` supplies optional `fields`, `paths` and `patterns` arrays matching the recorder. CLI summaries omit result payloads and keys. Plans and policy files remain caller-owned: protect any raw arguments they contain. See the [plan schema and API](docs/FORMAT.md).
+
 A bundle contains `manifest.json`, referenced `objects/<sha256>.json`, and a standalone standard-library verifier. Export is deterministic on the same runtime. Content hashes detect corruption; a root obtained from a trusted separate channel detects rewritten evidence. **Hashes alone do not authenticate the author or prove the events happened.**
 
 ## Scope and prior work
@@ -93,7 +105,7 @@ No OS sandbox, network interception, asynchronous/distributed replay, live cut-p
 
 **把智能体工具调用事故变成可分享、可复现的回归证据。** replayseal 在落盘前对配置命中的秘密与个人标识进行带密钥的稳定假名化；同一客户仍可识别为同一客户，不同客户不会都被压成一个 `[REDACTED]`，因此能保留“误发给另一位客户”这类问题。
 
-SDK 支持上下文管理器、函数装饰器和显式工具边界。回放严格检查工具名称、结构化参数、先后顺序和显式因果依赖；不调用传入的真实工具函数。CLI 可校验记录、定位两个版本的首个差异、导出内置独立校验器的证据 ZIP。示例完全离线，不发送邮件、不请求模型、不需要 API 凭据。
+SDK 支持上下文管理器、函数装饰器和显式工具边界。回放严格检查工具名称、结构化参数、先后顺序和显式因果依赖；不调用传入的真实工具函数。CLI 可执行纯 JSON 回放计划、校验记录、定位两个版本的首个差异、导出内置独立校验器的证据 ZIP。计划可引用前面已成功调用的结果，输出摘要不展示客户数据或密钥；实际业务分支仍应通过 SDK 验证。示例完全离线，不发送邮件、不请求模型、不需要 API 凭据。
 
 默认规则并不覆盖所有个人信息。请为业务字段、数组路径和自定义格式配置规则，并用合成样本检查；密钥不得随证据提交。内容哈希用于发现损坏，需要通过可信渠道保存根哈希才能发现整份证据被重写。它不证明记录者身份，也不等同于沙箱或合规认证。
 

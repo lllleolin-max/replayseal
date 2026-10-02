@@ -19,3 +19,6 @@ jobs:
       - run: python examples/incident.py
       - run: python benchmarks/ablation.py
       - run: python -m replayseal verify demo-output/incident
+      - run: python -m replayseal replay demo-output/incident demo-output/incident.plan.json
+        env:
+          REPLAYSEAL_KEY: 7075626c69632d64656d6f2d6f6e6c792d7265706c6163652d6d652d303030303030

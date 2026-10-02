@@ -50,6 +50,13 @@ def main():
     data = b"".join(path.read_bytes() for path in trace.rglob("*.json"))
     assert b"customer-017" not in data and b"owner@example.test" not in data
     export_bundle(trace, output / "incident.seal.zip")
+    plan = {"format": "replayseal/plan/v1", "calls": [
+        {"tool": "crm.lookup", "arguments": {"ticket": "ticket-81"}},
+        {"tool": "notification.enqueue", "arguments": {
+            "customer_id": {"$result": "e000001", "pointer": "/customer_id"},
+            "invoice": {"$result": "e000001", "pointer": "/invoice"}},
+         "depends_on": ["e000001"]}]}
+    (output / "incident.plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
     print(json.dumps({"verified_root": verify(trace)["manifest"]["root"],
                       "recorded_calls": recorded_count, "replay_live_calls": counts["live"] - recorded_count,
                       "regression_caught": caught, "synthetic_sensitive_literals_absent": True}, indent=2))

@@ -78,16 +78,27 @@ class Recorder(_Boundary):
         self._owner_thread = threading.get_ident()
         self._seen: set[str] = set()
         self.root: str | None = None
+        self._object_bytes = 0
+        # Each canonical SHA reference adds 66 bytes plus its separating comma.
+        # Include the manifest in the cap without rebuilding it for every call.
+        self._manifest_base_bytes = len(canonical({"format": integrity.FORMAT,
+            "policy_id": policy.policy_id, "key_id": policy.key_id, "events": [], "root": "0" * 64}))
 
     @property
     def last_id(self) -> str | None:
         return self._events[-1]["id"] if self._events else None
 
     def _append(self, event: dict):
-        if len(canonical(event)) > integrity.MAX_FILE_BYTES:
+        event_bytes = len(canonical(event))
+        if event_bytes > integrity.MAX_FILE_BYTES:
             raise IntegrityError("event exceeds file size limit")
+        count = len(self._events) + 1
+        manifest_bytes = self._manifest_base_bytes + 67 * count - 1
+        if self._object_bytes + event_bytes + manifest_bytes > integrity.MAX_TOTAL_BYTES:
+            raise IntegrityError("recording exceeds total evidence size limit")
         self._events.append(event)
         self._seen.add(event["id"])
+        self._object_bytes += event_bytes
 
     def call(self, tool: str, arguments: dict, invoke, *, depends_on=()):
         if self.closed or self.failed:

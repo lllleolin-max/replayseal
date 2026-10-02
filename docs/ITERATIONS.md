@@ -36,4 +36,14 @@ Observed with `py -3 -m unittest discover -s tests -p test_review_evidence.py -v
 
 Correction: validated safe error labels/opaque message schema, aligned scalar comparison with canonical bytes, made public event inspection independent snapshots, enforced a 64 MiB read budget in addition to file limits, rejected linked evidence directories, and rejected oversized capture arguments before invoking a tool. The private backing records remain within the trusted Python process boundary; this is not tamper resistance against executing malicious Python.
 
-After commit is recorded once it exists. Verification: `py -3 -m unittest discover -s tests -v` → **33 tests, OK**; `py -3 examples/incident.py --output demo-output/round3` → 2 captured calls, 0 live calls during replay and cross-customer regression rejected; `py -3 benchmarks/ablation.py` → six checks true.
+After: `c5693d4736d796a09347aba9d6d3f99e339058ba`. Verification: `py -3 -m unittest discover -s tests -v` → **33 tests, OK**; `py -3 examples/incident.py --output demo-output/round3` → 2 captured calls, 0 live calls during replay and cross-customer regression rejected; `py -3 benchmarks/ablation.py` → six checks true.
+
+## Final handoff review — cumulative capture and CLI completeness
+
+Before: `c5693d4736d796a09347aba9d6d3f99e339058ba`.
+
+Observed with the first two probes in `test_review_final.py`: `py -3 -m unittest discover -s tests -p test_review_final.py -v` → **2 probes: 1 failure, 1 error**. A patched 1,100-byte aggregate cap allowed a second capture event until seal; the CLI lacked an executable replay workflow and rejected `replay` as an unknown command. The prior 33-test suite and six-check ablation were independently rerun successfully before modifying code.
+
+Correction: track exact canonical event bytes and manifest-reference overhead incrementally and terminally reject overflowing capture; implement a data-only replay plan with JSON Pointer references to earlier successful results, explicit edges and explicit error expectations; preserve pseudonym provenance across reference resolution; return private summaries with exit codes 0/1/2. Update packaging to SPDX MIT metadata with its required setuptools minimum. Add tests for changed recipients, removed edges, dropped calls, invalid/forward references, bad keys, error expectations and trusted-root detection of completely rehashed rewrites.
+
+The correction commit SHA and final installed-wheel measurements are recorded after the commit is created. Remaining boundaries: plans do not execute actual orchestration branches; SDK replay does. Memory/CPU isolation, rollback of live tool effects, universal secret detection and author authenticity remain outside scope.
