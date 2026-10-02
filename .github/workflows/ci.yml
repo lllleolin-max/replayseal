@@ -18,7 +18,12 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: python examples/incident.py
       - run: python benchmarks/ablation.py
+      - run: python benchmarks/privacy_composition_probe.py
+      - run: python examples/composition.py
       - run: python -m replayseal verify demo-output/incident
       - run: python -m replayseal replay demo-output/incident demo-output/incident.plan.json
         env:
           REPLAYSEAL_KEY: 7075626c69632d64656d6f2d6f6e6c792d7265706c6163652d6d652d303030303030
+      - run: python -m replayseal replay demo-output/composition/target demo-output/composition/target.plan.json --policy demo-output/composition/target.policy.json
+        env:
+          REPLAYSEAL_KEY: 7075626c69632d636f6d706f736974696f6e2d64656d6f2d6f6e6c792d303030303030

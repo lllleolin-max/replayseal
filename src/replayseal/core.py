@@ -211,10 +211,12 @@ class Replay(_Boundary):
         try:
             if type(arguments) is not dict:
                 self._mismatch(f"event {index}: arguments must be an object")
-            actual = self.policy.redact(arguments, root="arguments")
+            actual, promoted = self.policy._redact(arguments, root="arguments")
         except PrivacyError:
             self._mismatch(f"event {index}: arguments violate the JSON/privacy contract")
         if digest({"tool": tool, "arguments": actual}) != expected["signature"]:
+            if promoted:
+                self._mismatch(f"event {index}: cannot match a whole-value promotion of partially redacted replay text")
             self._mismatch(f"event {index}: arguments differ")
         try:
             deps = _dependencies(depends_on, self._seen)

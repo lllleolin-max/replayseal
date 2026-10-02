@@ -77,6 +77,18 @@ policy = Policy(private_key,
 
 Paths are JSON Pointers rooted at `arguments` or `result`; `*` matches one path segment. Exact field matching ignores case, spaces, underscores and hyphens. Array indices can be matched by a number or `*`. Matching fields hide the entire value, including its structure. Regexes match original strings, including dictionary keys; overlapping matches are merged before replacement. Exception messages always become opaque whole-message pseudonyms, and custom exception class names become `ToolError`. Rules are caller-trusted configuration. Unconfigured sensitive information can remain visible. **This is configurable pseudonymization, not a universal PII detector, anonymization certificate or legal compliance claim.**
 
+Replay provenance distinguishes a complete opaque token from a string containing tokens and readable text. Whole-field/path protection always applies to the readable text; complete same-key tokens remain stable identities. A different same-key policy rechecks readable portions against its target regexes, including dictionary keys. Different keys are rejected before invocation. [The composition demo](examples/composition.py) records replay-issued values under a stricter target policy, then reproduces that target through both SDK and CLI.
+
+When an original recording partially masks a note and later hides the original entire note as a password, replay cannot recover the original full-value HMAC from the partial note. It fails with `ReplayMismatch` mentioning `whole-value promotion` and stays failed. Protect the upstream note as an entire field/path too, or keep computations needing original secrets inside a tool boundary; the upstream-protected SDK/plan workflow is tested. Evidence is never rewritten to make a match pass. Version 0.1.1 uses policy semantics v3; older evidence remains structurally verifiable, but replay requires newly captured fixtures under this policy version.
+
+```powershell
+python examples/composition.py --output demo-output/composition
+# Published synthetic key for this separate demo only.
+$env:REPLAYSEAL_KEY = '7075626c69632d636f6d706f736974696f6e2d64656d6f2d6f6e6c792d303030303030'
+python -m replayseal replay demo-output/composition/target demo-output/composition/target.plan.json --policy demo-output/composition/target.policy.json
+python benchmarks/privacy_composition_probe.py
+```
+
 ## Inspect and share evidence
 
 ```sh
@@ -108,6 +120,8 @@ No OS sandbox, network interception, asynchronous/distributed replay, live cut-p
 SDK 支持上下文管理器、函数装饰器和显式工具边界。回放严格检查工具名称、结构化参数、先后顺序和显式因果依赖；不调用传入的真实工具函数。CLI 可执行纯 JSON 回放计划、校验记录、定位两个版本的首个差异、导出内置独立校验器的证据 ZIP。计划可引用前面已成功调用的结果，输出摘要不展示客户数据或密钥；实际业务分支仍应通过 SDK 验证。示例完全离线，不发送邮件、不请求模型、不需要 API 凭据。
 
 默认规则并不覆盖所有个人信息。请为业务字段、数组路径和自定义格式配置规则，并用合成样本检查；密钥不得随证据提交。内容哈希用于发现损坏，需要通过可信渠道保存根哈希才能发现整份证据被重写。它不证明记录者身份，也不等同于沙箱或合规认证。
+
+完整假名可稳定传递；带可读前缀的部分脱敏文本进入敏感字段/路径时，会重新对整个值保护，更严格的同密钥策略也会检查可读部分。原录制若先部分隐藏原文、再对原文整体隐藏，回放无法还原整体 HMAC，会明确终止；将上游字段也配置为整体保护即可保持 SDK/CLI 的安全身份传递。0.1.1 更改策略语义版本，旧证据可校验，但回放需重新捕获。
 
 适合负责智能体质量、客户事故复现和 CI 的工程团队。当前为范围明确的早期工具，尚无实际客户、收入或独立安全认证；商业价值论证与性能测量均注明假设，不将合成测试当作市场验证。
 
