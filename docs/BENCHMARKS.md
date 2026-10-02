@@ -2,7 +2,17 @@
 
 Run `python benchmarks/measure.py --calls 500 --rounds 5`. The script reports every timing sample, medians, runtime/platform and evidence size. It measures a synthetic CRM-shaped JSON tool; no model/network is called. Recording includes redaction, hashing, writes and verification; replay includes verification. It is not a throughput promise or a competitor benchmark.
 
-Measured results will be committed with the final reviewed implementation. `python benchmarks/ablation.py` is the separate executable privacy/identity/causality contrast, not a timing comparison.
+Measured 2026-10-03 at code commit `39b5a11d7bbb384dce01fc42413c24c08ea3b81e`, after a non-editable wheel install into a fresh virtual environment. Python 3.14.3, Windows 11 build 26200, 500 calls per round, 5 rounds. [Raw samples and provenance](../benchmarks/latest-results.json) are committed; no timing samples were discarded.
+
+| Operation | Median per 500-call round |
+|---|---:|
+| Record, seal and verify | 3,542.101 ms |
+| Verify existing evidence | 1,915.414 ms |
+| Replay, including initial verify | 1,955.388 ms |
+
+Each round produced 224,656 bytes of evidence including its manifest. These filesystem-heavy Windows results are a local observation, not evidence of better latency than Chronicle, Keploy or another implementation. Storage, antivirus, caches and concurrent machine activity affect timing. The measured tool callable only returns small synthetic JSON; no external-call latency is included.
+
+`python benchmarks/ablation.py` is the separate executable privacy/identity/causality contrast, not a timing comparison. All eight checks were true: the constant-identity signature baseline accepted the wrong recipient, the signature-only baseline accepted the removed edge, and the real replay engine rejected each corresponding regression.
 
 ## Buyer and workflow
 
