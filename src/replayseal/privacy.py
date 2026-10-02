@@ -45,6 +45,11 @@ class Policy:
     def __post_init__(self) -> None:
         if type(self.key) is not bytes or len(self.key) < 32:
             raise PrivacyError("supply a private key of at least 32 bytes")
+        for attribute in ("fields", "paths", "patterns"):
+            rules = getattr(self, attribute)
+            if type(rules) not in (tuple, list):
+                raise PrivacyError("policy rules must be a list or tuple")
+            object.__setattr__(self, attribute, tuple(rules))
         if any(type(x) is not str for x in (*self.fields, *self.paths, *self.patterns)):
             raise PrivacyError("policy rules must be strings")
         try:

@@ -8,11 +8,12 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+import threading
 import zipfile
 
 from . import integrity
 from .integrity import canonical, digest, verify, IntegrityError, TOOL
-from .privacy import Policy
+from .privacy import Policy, PrivacyError
 
 
 class ReplayMismatch(AssertionError):
@@ -58,6 +59,10 @@ class Recorder(_Boundary):
         self.path, self.policy = Path(path), policy
         self.events: list[dict] = []
         self.closed = False
+        self.failed = False
+        self._busy = False
+        self._owner_thread = threading.get_ident()
+        self._seen: set[str] = set()
         self.root: str | None = None
 
     @property
@@ -65,28 +70,48 @@ class Recorder(_Boundary):
         return self.events[-1]["id"] if self.events else None
 
     def call(self, tool: str, arguments: dict, invoke, *, depends_on=()):
-        if self.closed:
-            raise RuntimeError("recorder is sealed")
+        if self.closed or self.failed:
+            raise RuntimeError("recorder is sealed or failed")
+        if self._busy or threading.get_ident() != self._owner_thread:
+            self.failed = True
+            raise RuntimeError("nested or cross-thread recording is not supported")
         if type(tool) is not str or not TOOL.fullmatch(tool):
             raise ValueError("tool name must be a static identifier")
         if type(arguments) is not dict:
             raise TypeError("tool arguments must be an object")
-        deps = _dependencies(depends_on, {event["id"] for event in self.events})
+        deps = _dependencies(depends_on, self._seen)
         safe_args = self.policy.redact(arguments, root="arguments")
         event = {"id": f"e{len(self.events) + 1:06d}", "tool": tool, "arguments": safe_args,
                  "signature": digest({"tool": tool, "arguments": safe_args}), "depends_on": deps}
+        self._busy = True
+        completed = False
         try:
-            result = invoke(arguments)
-        except Exception as exc:
-            event["outcome"] = {"kind": "error", "type": type(exc).__name__,
-                                "message": self.policy.redact(str(exc), root="error")}
+            try:
+                result = invoke(arguments)
+            except Exception as exc:
+                if self.failed:
+                    raise
+                event["outcome"] = {"kind": "error", "type": type(exc).__name__,
+                                    "message": self.policy.redact(str(exc), root="error")}
+                self.events.append(event)
+                self._seen.add(event["id"])
+                completed = True
+                raise
+            if self.failed:
+                raise RuntimeError("recorder failed during invocation")
+            event["outcome"] = {"kind": "return", "value": self.policy.redact(result, root="result")}
             self.events.append(event)
-            raise
-        event["outcome"] = {"kind": "return", "value": self.policy.redact(result, root="result")}
-        self.events.append(event)
-        return result
+            self._seen.add(event["id"])
+            completed = True
+            return result
+        finally:
+            self._busy = False
+            if not completed:
+                self.failed = True
 
     def seal(self) -> str:
+        if self.failed or self._busy:
+            raise RuntimeError("cannot seal a failed or active recording")
         if self.closed:
             return self.root
         if self.path.exists():
@@ -117,6 +142,8 @@ class Recorder(_Boundary):
         return self
 
     def __exit__(self, error_type, error, traceback):
+        if self.failed and error_type is not None:
+            return False
         self.seal()
 
 
@@ -129,6 +156,7 @@ class Replay(_Boundary):
             raise ReplayMismatch("replay requires the recording policy and pseudonym key")
         self.events, self.policy = evidence["events"], policy
         self.position, self.failed, self.closed = 0, False, False
+        self._seen: set[str] = set()
 
     @property
     def last_id(self) -> str | None:
@@ -147,16 +175,22 @@ class Replay(_Boundary):
         index = self.position + 1
         if tool != expected["tool"]:
             self._mismatch(f"event {index}: tool differs")
-        actual = self.policy.redact(arguments, root="arguments")
+        try:
+            if type(arguments) is not dict:
+                self._mismatch(f"event {index}: arguments must be an object")
+            actual = self.policy.redact(arguments, root="arguments")
+        except PrivacyError:
+            self._mismatch(f"event {index}: arguments violate the JSON/privacy contract")
         if digest({"tool": tool, "arguments": actual}) != expected["signature"]:
             self._mismatch(f"event {index}: arguments differ")
         try:
-            deps = _dependencies(depends_on, {event["id"] for event in self.events[:self.position]})
-        except ValueError:
+            deps = _dependencies(depends_on, self._seen)
+        except (ValueError, TypeError):
             self._mismatch(f"event {index}: invalid dependencies")
         if deps != expected["depends_on"]:
             self._mismatch(f"event {index}: causal dependencies differ")
         self.position += 1
+        self._seen.add(expected["id"])
         outcome = expected["outcome"]
         if outcome["kind"] == "error":
             raise RecordedToolError(outcome["type"], outcome["message"])
