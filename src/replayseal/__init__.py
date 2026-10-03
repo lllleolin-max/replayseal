@@ -6,4 +6,4 @@ from .plan import run_plan
 
 __all__ = ["Recorder", "Replay", "ReplayMismatch", "RecordedToolError", "compare",
            "export_bundle", "IntegrityError", "verify", "Policy", "PrivacyError", "run_plan"]
-__version__ = "0.1.1"
+__version__ = "0.1.2"

@@ -125,7 +125,28 @@ Paths are JSON Pointers rooted at `arguments` or `result`; `*` matches one path 
 
 Replay provenance distinguishes a complete opaque token from a string containing tokens and readable text. Whole-field/path protection always applies to the readable text; complete same-key tokens remain stable identities. A different same-key policy rechecks readable portions against its target regexes, including dictionary keys. Different keys are rejected before invocation. [The composition demo](examples/composition.py) records replay-issued values under a stricter target policy, then reproduces that target through both SDK and CLI.
 
-When an original recording partially masks a note and later hides the original entire note as a password, replay cannot recover the original full-value HMAC from the partial note. It fails with `ReplayMismatch` mentioning `whole-value promotion` and stays failed. Protect the upstream note as an entire field/path too, or keep computations needing original secrets inside a tool boundary; the upstream-protected SDK/plan workflow is tested. Evidence is never rewritten to make a match pass. Version 0.1.1 uses policy semantics v3; older evidence remains structurally verifiable, but replay requires newly captured fixtures under this policy version.
+Replay-issued strings support `copy.copy()` and `copy.deepcopy()` in v0.1.2,
+including partial readable text, nested dictionaries/lists and dictionary keys.
+The copies retain their source key/policy provenance after the Replay context
+ends. An orchestrator can detach a working context without JSON serialization:
+
+```python
+import copy
+
+working_context = copy.deepcopy(account)  # Detached nested containers.
+customer = copy.copy(working_context["customer_id"])
+```
+
+Shallow container copies follow normal Python semantics: the outer container is
+new and nested containers remain shared. Deep copies detach nested containers and
+preserve repeated references within the copied graph. Copying a replay-issued
+string creates a separate object carrying the same provenance. Ordinary
+token-looking strings stay ordinary strings; string conversion and JSON
+serialization discard provenance. Copying never reconstructs hidden plaintext
+or authorizes a foreign key. The composition demo now copies its contexts in
+both capture and replay; its replay live-call count remains zero.
+
+When an original recording partially masks a note and later hides the original entire note as a password, replay cannot recover the original full-value HMAC from the partial note. It fails with `ReplayMismatch` mentioning `whole-value promotion` and stays failed. Protect the upstream note as an entire field/path too, or keep computations needing original secrets inside a tool boundary; the upstream-protected SDK/plan workflow is tested. Evidence is never rewritten to make a match pass. Versions 0.1.1 and 0.1.2 both use policy semantics v3: existing v0.1.1 fingerprints, canonical signatures and evidence roots remain valid without recapture. Evidence from earlier policy semantics remains structurally verifiable, but replay requires newly captured v3 fixtures.
 
 ```powershell
 python examples/composition.py --output demo-output/composition
@@ -167,7 +188,7 @@ SDK 支持上下文管理器、函数装饰器和显式工具边界。回放严�
 
 默认规则并不覆盖所有个人信息。请为业务字段、数组路径和自定义格式配置规则，并用合成样本检查；密钥不得随证据提交。内容哈希用于发现损坏，需要通过可信渠道保存根哈希才能发现整份证据被重写。它不证明记录者身份，也不等同于沙箱或合规认证。
 
-完整假名可稳定传递；带可读前缀的部分脱敏文本进入敏感字段/路径时，会重新对整个值保护，更严格的同密钥策略也会检查可读部分。原录制若先部分隐藏原文、再对原文整体隐藏，回放无法还原整体 HMAC，会明确终止；将上游字段也配置为整体保护即可保持 SDK/CLI 的安全身份传递。0.1.1 更改策略语义版本，旧证据可校验，但回放需重新捕获。
+完整假名可稳定传递；带可读前缀的部分脱敏文本进入敏感字段/路径时，会重新对整个值保护，更严格的同密钥策略也会检查可读部分。原录制若先部分隐藏原文、再对原文整体隐藏，回放无法还原整体 HMAC，会明确终止；将上游字段也配置为整体保护即可保持 SDK/CLI 的安全身份传递。0.1.2 支持保留来源标识的浅拷贝与深拷贝，深拷贝可分离嵌套工作上下文；普通字符串或 JSON 转换不会获得该来源标识。0.1.1/0.1.2 同为策略语义 v3，已有 0.1.1 证据无需重新捕获；更早语义的旧证据仍只能校验，回放需重新捕获。
 
 适合负责智能体质量、客户事故复现和 CI 的工程团队。当前为范围明确的早期工具，尚无实际客户、收入或独立安全认证；商业价值论证与性能测量均注明假设，不将合成测试当作市场验证。
 

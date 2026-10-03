@@ -23,6 +23,17 @@ Redacted values are opaque. Equality and unchanged pass-through are meaningful; 
 
 A verified string containing tokens can still contain readable sensitive text. Its source marker never overrides configured whole-field/path rules. Complete same-key tokens are idempotent; partial text receives whole-value protection when promoted, and different same-key policies inspect its readable portions. A different key fails before invocation, including nested protected containers. This does not recover hidden originals: a strict replay whose original downstream whole-value HMAC cannot be reconstructed stops with a terminal `ReplayMismatch`. Configure upstream full-value rules for values later consumed as whole sensitive fields. Policy semantics v3 makes the corrected behavior distinguishable from older fixtures; those fixtures cannot silently inherit current replay guarantees.
 
+In v0.1.2, shallow/deep copying a Replay-issued string preserves its existing
+key and source-policy provenance in a separate runtime object. Deep copying a
+JSON context also detaches its containers and preserves repeated references.
+This does not grant provenance to ordinary token-shaped strings or recreate
+hidden originals. JSON serialization and ordinary string transformations can
+discard the runtime marker. Copying does not relax foreign-key rejection,
+stricter target rules or terminal whole-value-promotion mismatches. Provenance
+attributes remain within the trusted Python process boundary, not a defense
+against hostile code mutating runtime objects. Policy semantics remains v3;
+v0.1.1 evidence is replay-compatible without rewriting its signatures or roots.
+
 File-level byte and JSON-depth limits defend basic accidental/adversarial oversized inputs; the process is not a memory/CPU isolation boundary. Regex configuration is trusted and can be computationally expensive. Do not open evidence in a directory concurrently modified by an attacker.
 
 CLI replay plans are JSON data and cannot load recorded tool code. Its key comes from an environment variable; never put it in command arguments, a plan or a shared policy file. Plans may still contain caller-supplied raw arguments and are not automatically sanitized or exported. The CLI intentionally prints only a match summary or controlled mismatch reason. Resolved templates, decoded JSON and recorder results can require more memory than their serialized sizes; aggregate caps do not provide process isolation. Failed result capture cannot roll back a live tool invocation.
