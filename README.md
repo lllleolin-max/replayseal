@@ -4,6 +4,10 @@
 
 An offline Python SDK and CLI for teams turning customer-specific agent failures into CI regression fixtures. Record JSON tool boundaries, replace configured secrets and identifiers with stable keyed pseudonyms **before writing any evidence**, then replay a strict ordered contract with explicit causal dependencies. Export a content-addressed evidence bundle a colleague can verify using Python alone.
 
+**中文：** 把智能体工具事故保存为可分享的本地回归样例：落盘前按配置隐藏敏感
+标识，回放时核对调用顺序与参数，并确保回放边界不再调用真实工具。
+[完整中文说明](#中文说明) · [SDK](#wrap-a-tool-boundary) · [格式与回放计划](docs/FORMAT.md)
+
 Python 3.11+ · MIT · zero runtime dependencies · alpha
 
 ```text
@@ -14,17 +18,59 @@ agent → JSON boundary → policy → keyed pseudonyms → hashed objects → e
 
 ## Run the incident, locally
 
+Install from a source checkout with Python 3.11+:
+
 ```sh
-python -m venv .venv
-# Activate the environment for your shell, then:
-python -m pip install -e .
-python -m unittest discover -s tests -v
-python examples/incident.py
-python -m replayseal verify demo-output/incident
-python benchmarks/ablation.py
+git clone https://github.com/lllleolin-max/replayseal.git
+cd replayseal
 ```
 
-The synthetic example records a CRM lookup and invoice notification, replays them with zero live tool calls, and catches a regression that routes the invoice to a different customer. The output directory must be new: evidence is never silently overwritten. The published example keys and customer records are deliberately synthetic.
+Linux/macOS:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/python examples/incident.py
+```
+
+Windows PowerShell:
+
+```powershell
+py -3 -m venv .venv
+.venv\Scripts\python.exe -m pip install .
+.venv\Scripts\python.exe examples/incident.py
+```
+
+In the remaining examples, `python` means this environment's interpreter:
+`.venv/bin/python` on Linux/macOS or `.venv\Scripts\python.exe` on Windows.
+The runtime uses the standard library; source installation may download build
+dependencies. No PyPI release is required for these instructions.
+
+Then inspect the recorded evidence:
+
+```sh
+python -m replayseal verify demo-output/incident
+```
+
+Both commands exit `0`. The example reports `recorded_calls: 2`,
+`replay_live_calls: 0`, a caught regression and
+`synthetic_sensitive_literals_absent: true`. Verification returns
+`verified: true` and `events: 2`. Recording calls only the demo's local fake
+functions; no CRM request or notification is sent.
+
+Artifacts: `demo-output/incident/` is the trace; `incident.plan.json` is the
+data-only replay plan; `incident.seal.zip` is the shareable evidence bundle.
+Optional development checks are `python -m unittest discover -s tests -v`
+and `python benchmarks/ablation.py`.
+
+The synthetic example records a CRM lookup and invoice notification, replays them
+with zero live tool calls, and catches a regression that routes the invoice to a
+different customer. Use an output path with no existing `incident` trace or bundle:
+evidence is never
+silently overwritten. To repeat the demo, run
+`python examples/incident.py --output demo-output-2` and use that directory in
+subsequent verify/replay commands. The published example keys and customer records
+are deliberately synthetic.
 
 The example also emits `demo-output/incident.plan.json`. Run its data-only call contract through the CLI with the **public synthetic demo key**:
 
