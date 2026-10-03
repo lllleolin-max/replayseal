@@ -1,5 +1,6 @@
 """Synthetic replay-to-recording handoff with a stricter target policy."""
 import argparse
+import copy
 import json
 from pathlib import Path
 
@@ -18,8 +19,11 @@ def workflow(boundary, output, counts):
         counts["live"] += 1
         return {"accepted": True}
 
-    prepared = boundary.call("fixture.prepare", {}, prepare)
-    return boundary.call("login", {"password": prepared["note"], "customer_id": prepared["customer_id"]},
+    # An orchestrator can detach its nested working context without converting
+    # provenance-bearing values into ordinary strings through JSON serialization.
+    prepared = copy.deepcopy(boundary.call("fixture.prepare", {}, prepare))
+    identity = copy.copy(prepared["customer_id"])
+    return boundary.call("login", {"password": prepared["note"], "customer_id": identity},
                          login, depends_on=[boundary.last_id])
 
 
@@ -36,13 +40,17 @@ def main():
     source_bytes = {p.name: p.read_bytes() for p in source.rglob("*.json")}
     with Replay(source, source_policy, expected_root=rec.root) as replay:
         prior = replay.call("lookup", {})
+    copied = copy.deepcopy(prior)
+    assert copied is not prior
+    assert copied["customer_id"].key_id == prior["customer_id"].key_id
+    assert copied["note"].policy_id == prior["note"].policy_id
     rules = {"fields": [*DEFAULT_FIELDS, "note"]}
     target_policy, counts = Policy(DEMO_KEY, **rules), {"live": 0}
     with Recorder(target, target_policy) as rec:
-        workflow(rec, prior, counts)
+        workflow(rec, copied, counts)
     captured = counts["live"]
     with Replay(target, target_policy, expected_root=rec.root) as replay:
-        result = workflow(replay, prior, counts)
+        result = workflow(replay, copied, counts)
     target_bytes = b"".join(p.read_bytes() for p in target.rglob("*.json"))
     assert b"bare-sensitive-prefix" not in target_bytes
     assert b"owner@example.test" not in target_bytes
@@ -58,7 +66,8 @@ def main():
     (output_dir / "target.policy.json").write_text(json.dumps(rules, indent=2), encoding="utf-8")
     print(json.dumps({"target_root": verify(target)["manifest"]["root"],
                       "target_capture_calls": captured, "replay_live_calls": counts["live"] - captured,
-                      "configured_target_literals_absent": True, "source_unchanged": True}, indent=2))
+                      "configured_target_literals_absent": True, "source_unchanged": True,
+                      "copied_context_detached": True, "copied_provenance_preserved": True}, indent=2))
 
 
 if __name__ == "__main__":
