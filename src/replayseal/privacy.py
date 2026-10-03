@@ -32,6 +32,16 @@ class _Pseudonym(str):
         obj.policy_id = policy_id
         return obj
 
+    def __copy__(self):
+        # A fresh string subtype also keeps its provenance attributes detached.
+        # Reconstruct only existing replay provenance, never infer it from text.
+        return type(self)(str(self), self.key_id, self.policy_id)
+
+    def __deepcopy__(self, memo):
+        copied = self.__copy__()
+        memo[id(self)] = copied
+        return copied
+
 
 def _field(name: str) -> str:
     return re.sub(r"[_\-\s]", "", name).casefold()
